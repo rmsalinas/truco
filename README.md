@@ -31,14 +31,11 @@ TRUCO has been benchmarked against OpenCV's `findContours` (Suzuki-Abe) and Run-
 * **Multi-Threaded (Server CPU):** On an Intel Xeon, it also maintains robust scaling, approximately **10x speedup**.
 
 ### Scalability Analysis
-TRUCO scales linearly with thread count on complex images.
-
-![Speedup Analysis](real-combined_speedup_analysis.jpg)
-*Speedup relative to Suzuki-Abe (OpenCV) across different resolutions. TRUCO (Blue line) reaches >10x speedup on 16MP images.*
-
-![Scalability Analysis](real-scalability_analysis.jpg)
-*Scalability stratified by image complexity. High-complexity images (Green line) show near-linear scaling.*
-
+TRUCO scales strongly with thread count on complex images.
+| Speedup vs. Resolution | Scalability by Complexity |
+| :---: | :---: |
+| <img src="real-combined_speedup_analysis.png" width="100%"> | <img src="real-scalability_analysis.png" width="100%"> |
+| *Figure 1: Speedup factors relative to Suzuki-Abe.* | *Figure 2: Scaling stratified by image complexity.* |
 ---
 
 ## 🛠 Installation & Usage
