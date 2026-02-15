@@ -1,7 +1,3 @@
-Here is a comprehensive, professional, and "cool" README.md for your GitHub repository. It highlights the massive performance gains and technical innovations described in your paper and code.
-
-You can copy and paste the markdown below directly into your repository.
-
 TRUCO: Threaded Raster Unrestricted Contour Ownership
 **
 
