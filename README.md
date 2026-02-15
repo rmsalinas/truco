@@ -1,2 +1,110 @@
-# truco
-Official implementation of TRUCO, a deterministic vertical partitioning strategy for parallel contour tracing. Unlike traditional sequential methods, TRUCO uses a speculative tracing model and start-point ownership logic to provide massive speedups on high-resolution images without the overhead of topological hierarchies or mutex synchronization.
+Here is a comprehensive, professional, and "cool" README.md for your GitHub repository. It highlights the massive performance gains and technical innovations described in your paper and code.
+
+You can copy and paste the markdown below directly into your repository.
+
+TRUCO: Threaded Raster Unrestricted Contour Ownership
+**
+
+A lock-free, high-performance parallel algorithm for extracting geometric contours from binary images.
+
+
+TRUCO outperforms the industry-standard Suzuki-Abe algorithm (OpenCV findContours) by over 10x on multi-core CPUs.
+
+🚀 Why TRUCO?
+Standard contour extraction algorithms (like Suzuki-Abe) are sequential and rely on expensive 32-bit labeling to build topological hierarchies. In modern computer vision—especially for 4K/high-res inputs—you often just need the geometry (the points) fast, without the hierarchy overhead.
++1
+
+TRUCO solves this by:
+
+
+Going Parallel: Leverages multi-core architectures effectively using a row-based domain decomposition.
+
+
+Lock-Free Execution: Uses "benign race conditions" where threads can safely write to the same pixels without mutexes or atomic instructions.
+
+
+Start-Point Ownership: A unique logic where a contour belongs strictly to the thread that finds its starting pixel, preventing double-counting without complex stitching.
++1
+
+
+Memory Efficiency: Operates on an 8-bit state space (vs. standard 32-bit), reducing memory bandwidth pressure and increasing SIMD throughput.
+
+📊 Performance
+TRUCO has been benchmarked against OpenCV's findContours (Suzuki-Abe) and Run-Length Encoding (RLE) methods.
+
+Key Benchmarks
+
+Single-Threaded: Even without parallelism, TRUCO is ~1.8x faster than OpenCV due to 8-bit optimizations.
+
+
+Multi-Threaded (Consumer CPU): On an Intel i7 (14 cores), TRUCO achieves up to 10.5x speedup on 16MP real-world images.
+
+
+Multi-Threaded (Server CPU): On an Intel Xeon, it maintains robust scaling, delivering consistent throughput.
+
+Scalability Analysis
+TRUCO scales linearly with thread count on complex images.
+
+Speedup relative to Suzuki-Abe (OpenCV) across different resolutions. TRUCO (Blue line) reaches >10x speedup on 16MP images.
+
+Scalability stratified by image complexity. High-complexity images (Green line) show near-linear scaling.
+
+🛠 Installation & Usage
+TRUCO is designed to be easily integrated into existing OpenCV-based C++ projects.
+
+Dependencies
+OpenCV 4.0+
+
+C++17 compliant compiler
+
+Basic Usage
+Simply include the header and use findTRUContours just like you would use standard OpenCV functions.
+
+C++
+#include "findtrucontour.h"
+#include <opencv2/opencv.hpp>
+
+int main() {
+    // 1. Load your binary image (Must be CV_8UC1)
+    cv::Mat binaryImage = cv::imread("mask.png", cv::IMREAD_GRAYSCALE);
+    
+    // 2. Prepare output vector
+    std::vector<std::vector<cv::Point>> contours;
+    
+    // 3. Run TRUCO
+    // Arguments: Input Image, Output Contours, Min Points (optional), Threads (optional)
+    cv::findTRUContours(binaryImage, contours, 0, 0);
+    
+    // 4. Draw or process results
+    cv::Mat debug;
+    cv::cvtColor(binaryImage, debug, cv::COLOR_GRAY2BGR);
+    cv::drawContours(debug, contours, -1, cv::Scalar(0, 0, 255), 2);
+    
+    return 0;
+}
+🧠 Algorithm Details
+The "Speculative Tracing" Model
+Traditional parallel contour extraction requires complex "stitching" of image tiles. TRUCO avoids this by allowing threads to speculatively trace contours downwards into neighboring regions.
+
+Trace Down: A thread can trace a contour anywhere below its starting row.
+
+Abort Up: If a trace moves upwards into a previous thread's region, it aborts immediately. This ensures the contour is only processed by the "owner" thread above.
+
+Benign Races: Threads mark pixels as VISITED. If two threads mark the same pixel, the result is identical, so no locks are needed.
+
+📄 Citation
+If you use TRUCO in your research, please cite our paper:
+
+Fragmento de código
+@article{truco2026,
+  title={TRUCO: Threaded Raster Unrestricted Contour Ownership},
+  author={Muñoz-Salinas, Rafael and Romero-Ramirez, Francisco J. and Marín-Jiménez, Manuel J.},
+  journal={Pattern Recognition},
+  year={2026}
+}
+👥 Authors
+Rafael Muñoz-Salinas - University of Córdoba
+
+Francisco J. Romero-Ramirez - University of Córdoba
+
+Manuel J. Marín-Jiménez - University of Córdoba
