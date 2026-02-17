@@ -89,7 +89,7 @@ If you use TRUCO in your research, please cite our paper:
 ```
 @article{truco2026,
   title={TRUCO: A Scalable Lock-Free Algorithm for Parallel Contour Extraction},
-  author={Muñoz-Salinas, Rafael and Romero-Ramirez, Francisco J. and Marín-Jiménez, Manuel J.},
+  author={Muñoz-Salinas, Rafael and Romero-Ramírez, Francisco J. and Marín-Jiménez, Manuel J.},
   journal={To be published},
   year={2026}
 }
