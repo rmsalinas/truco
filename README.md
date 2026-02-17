@@ -43,7 +43,7 @@ TRUCO scales strongly with thread count on complex images.
 ### TRUCO is designed to be easily integrated into existing OpenCV-based C++ projects.
 
 ### Dependencies
-* OpenCV 4.0+
+* OpenCV 4.12+
 * C++17 compliant compiler
 
 ### Basic Usage
