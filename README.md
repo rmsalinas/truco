@@ -1,11 +1,11 @@
-# TRUCO: Threaded Raster Unrestricted Contour Ownership
+# TRUCO: A Scalable Lock-Free Algorithm for Parallel Contour Extraction
 
 ![C++](https://img.shields.io/badge/C++-17-blue.svg?style=flat-square)
 ![OpenCV](https://img.shields.io/badge/OpenCV-4.x-green.svg?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-Research-orange.svg?style=flat-square)
 
-**A lock-free, high-performance parallel algorithm for extracting geometric contours from binary images.**
+**A header-only, lock-free, high-performance parallel algorithm for extracting geometric contours from binary images.**
 
 > **TRUCO** outperforms the industry-standard Suzuki-Abe algorithm (OpenCV `findContours`) by **over 10x** on multi-core CPUs.
 
@@ -40,7 +40,7 @@ TRUCO scales strongly with thread count on complex images.
 
 ## 🛠 Installation & Usage
 
-### TRUCO is designed to be easily integrated into existing OpenCV-based C++ projects.
+### TRUCO is header-only, designed to be easily integrated into existing OpenCV-based C++ projects.
 
 ### Dependencies
 * OpenCV 4.12+
@@ -48,7 +48,7 @@ TRUCO scales strongly with thread count on complex images.
 
 ### Basic Usage
 
-Simply include the header and use `findTRUContours` just like you would use standard OpenCV functions.
+Simply include the header `findtrucontour.h` and use `findTRUContours` just like you would use standard OpenCV functions.
 
 ```cpp
 #include "findtrucontour.h"
@@ -88,7 +88,7 @@ Benign Races: Threads mark pixels as VISITED. If two threads mark the same pixel
 If you use TRUCO in your research, please cite our paper:
 ```
 @article{truco2026,
-  title={TRUCO: Threaded Raster Unrestricted Contour Ownership},
+  title={TRUCO: A Scalable Lock-Free Algorithm for Parallel Contour Extraction},
   author={Muñoz-Salinas, Rafael and Romero-Ramirez, Francisco J. and Marín-Jiménez, Manuel J.},
   journal={To be published},
   year={2026}
