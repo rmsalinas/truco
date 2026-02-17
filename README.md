@@ -94,6 +94,30 @@ If you use TRUCO in your research, please cite our paper:
   year={2026}
 }
 ```
+## 🧠 Reproducing Benchmarks
+
+This repository includes a performance testing tool (test_trucontour.cpp).
+
+### 🏗 Build
+```
+bash
+mkdir build && cd build
+cmake ..
+make
+```
+
+### 🏃 Run
+To strictly reproduce the paper results (preventing thermal throttling), run:
+
+```
+bash
+echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo
+sudo cpupower frequency-set -u 3500MHz
+./test_trucontour <path_to_image_directory> [-show] [-scale 0.5]
+```
+[Download the Image Dataset on Zenodo](https://zenodo.org/records/18667188?token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjY0NWJmOWQ4LWQxZmQtNDY0OC1iMjEwLWZkMzFhYzViMGJkYyIsImRhdGEiOnt9LCJyYW5kb20iOiIxYjI5YWFlOTRlOGNhYTFmMzIzN2ZhZjdiNTc3OWRiYSJ9.bjgkyDaWsBMeTqrotIlBdyQ_65cKygzA5uOqlEpsATtuXnxtFDLXKZ7zEG_a2mxcghlplnMh2c0B8n_To7i38w)
+
+
 ## 👥 Authors
 - Rafael Muñoz-Salinas - University of Córdoba
 - Francisco J. Romero-Ramirez - University of Córdoba
