@@ -9,7 +9,7 @@
 
 > **TRUCO** outperforms the industry-standard Suzuki-Abe algorithm (OpenCV `findContours`) by **over 10x** on multi-core CPUs.
 
-
+[Download Preprint](https://drive.google.com/file/d/1SGIu2cuRK9kGsPr-Io_uZYbluFh_3YbG/view?usp=drive_link)
 ## 📄 Citation
 If you use TRUCO in your research, please cite our paper:
 ```
@@ -20,7 +20,7 @@ If you use TRUCO in your research, please cite our paper:
   year={2026}
 }
 ```
-[Download Preprint](https://drive.google.com/file/d/1SGIu2cuRK9kGsPr-Io_uZYbluFh_3YbG/view?usp=drive_link)
+
 
 ## 🚀 Why TRUCO?
 
