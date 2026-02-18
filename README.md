@@ -9,6 +9,19 @@
 
 > **TRUCO** outperforms the industry-standard Suzuki-Abe algorithm (OpenCV `findContours`) by **over 10x** on multi-core CPUs.
 
+
+## 📄 Citation
+If you use TRUCO in your research, please cite our paper:
+```
+@article{truco2026,
+  title={TRUCO: A Scalable Lock-Free Algorithm for Parallel Contour Extraction},
+  author={Muñoz-Salinas, Rafael and Romero-Ramírez, Francisco J. and Marín-Jiménez, Manuel J.},
+  journal={To be published},
+  year={2026}
+}
+```
+[Download Preprint](https://drive.google.com/file/d/1SGIu2cuRK9kGsPr-Io_uZYbluFh_3YbG/view?usp=drive_link)
+
 ## 🚀 Why TRUCO?
 
 Standard contour extraction algorithms (like Suzuki-Abe) are sequential and rely on expensive 32-bit labeling to build topological hierarchies. In modern computer vision—especially for 4K/high-res inputs—you often just need the *geometry* (the points) fast, without the hierarchy overhead.
@@ -84,16 +97,7 @@ Abort Up: If a trace moves upwards into a previous thread's region, it aborts im
 
 Benign Races: Threads mark pixels as VISITED. If two threads mark the same pixel, the result is identical, so no locks are needed.
 
-## 📄 Citation
-If you use TRUCO in your research, please cite our paper:
-```
-@article{truco2026,
-  title={TRUCO: A Scalable Lock-Free Algorithm for Parallel Contour Extraction},
-  author={Muñoz-Salinas, Rafael and Romero-Ramírez, Francisco J. and Marín-Jiménez, Manuel J.},
-  journal={To be published},
-  year={2026}
-}
-```
+
 ## 🧠 Reproducing Benchmarks
 
 This repository includes a performance testing tool (test_trucontour.cpp).
