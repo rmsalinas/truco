@@ -1,14 +1,9 @@
 #pragma once
 #include "opencv2/core.hpp"
 #include "opencv2/core/hal/intrin.hpp"
-#include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 namespace cv{
 
-#pragma once
-#include <vector>
-#include <cstring> // for memcpy
-#include "opencv2/core.hpp"
 
 // Tunable block size. 1024 points = 8KB (Fits easily in L1 Cache)
 template <size_t BLOCK_SIZE = 2048>
