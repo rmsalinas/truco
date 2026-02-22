@@ -54,7 +54,7 @@ int main(int argc, char** argv)
 {
 
     if(argc<2){
-        std::cerr<<"Usage: "<<argv[0]<<" <image_folder> [-csv filename] [-scale val] [-binary] [-clean] [-balance] [-minsize val] [-no-METHOD] [-minthreads val] [-maxthreads val]"<<std::endl;
+        std::cerr<<"Usage: "<<argv[0]<<" <image_folder> [-csv filename] [-scale val] [-binary] [-clean] [-balance] [-minsize val] [-no-METHOD] [-minthreads val] [-maxthreads val] [-testTRUCOasSuzuki]"<<std::endl;
         return -1;
     }
 
@@ -110,6 +110,10 @@ int main(int argc, char** argv)
             std::cerr<<"Using max threads "<<maxThreads<<std::endl;
          }
 
+         if(arg=="-testTRUCOasSuzuki"){
+            TEST_TRUCO_DEV_SAME_AS_SUZUKI=true;
+            std::cerr<<"Testing findTRUContours results against Suzuki findContours."<<std::endl;
+         }
     }
     ///////////////////////////////////////
     /// SINGLE IMAGE JUST FOR TESTING
