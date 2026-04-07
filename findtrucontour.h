@@ -133,13 +133,7 @@ private:
  * @param _buffer Optional working buffer (CV_8UC1) sized (src.rows+2 x src.cols+2). It may not be sized, so it will be done here.
  *                Pass a persistent Mat here to avoid memory allocation overhead in loops.
  */
-CV_EXPORTS_W  void findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minSize=0,int nthreads=0,InputOutputArray _buffer = noArray() );
-
-CV_EXPORTS_W  void  findTRUContours(InputArray _src,std::vector<std::vector<cv::Point>>& contours,
-                                  int minSize=0,int nthreads=0,
-                                  InputOutputArray _buffer= noArray());
-
-
+CV_EXPORTS_W  void findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minSize=0,int nthreads=0 );
 
 
 
@@ -198,7 +192,6 @@ public:
         while(true)
         {
             buffer->push_back({curr_x - 1, curr_y - 1});
-            // showImage(padded_);
             // Check neighbors
             for (int n = 0; n < 8; ++n)
             {
@@ -232,9 +225,7 @@ public:
                 }
 
                 curr_ptr = neighbor;//move ptr
-#ifdef DEBUG_UCONTOUR
-                showImage(padded_,cv::Point(curr_x,curr_y));
-#endif
+
                 // Reset search index for Moore neighbor
                 search_idx = (dir +6) & 7;
                 break;
@@ -268,9 +259,7 @@ public:
 
             // Hint for result vector size
             local_contours.reserve(2048);
-#ifdef DEBUG_UCONTOUR
-            std::cout<<"Thread Range: "<<rowRange.start<<" - "<<rowRange.end<<std::endl;
-#endif
+
             for (int r = rowRange.start; r < rowRange.end; ++r)
             {
                 uchar* row_ptr = padded_.data + r * step_;
@@ -298,21 +287,17 @@ public:
                         }
                     }
 
-                    // 4. FAST SCAN: Find end of current component to skip processing it again
+                    // 3. FAST SCAN: Find end of current component to skip processing it again
                     c = findEndContourPoint(row_ptr, cols, c + 1);
                     if(c>=cols)break;//end of row
                     //internal contour
-                    if(row_ptr[c-1]>VISITED_OUTER_RIGHT){// if(row_ptr[c-1] == FOREGROUND || row_ptr[c-1]==VISITED_){
-
-
+                    if(row_ptr[c-1]>VISITED_OUTER_RIGHT){
                         if( traceContour(&buffer,r,c-1,row_ptr,rowRange,false)){
-
                             // Post-processing
                             if (buffer.size() > 1 && buffer.back() == buffer.front()) {
                                 buffer.pop_back();
 
                             }
-
                             if (buffer.size() >= minSize_) {
                                 local_contours.emplace_back();
                                 buffer.copyTo(local_contours.back());
@@ -322,20 +307,18 @@ public:
                 }
             }
         }
-
     }
-
 
     static inline int findStartContourPoint(uchar* src_data, int width, int j)
     {
 #if (CV_SIMD || CV_SIMD_SCALABLE)
-        v_uint8 v_zero = vx_setzero_u8();
-        for (; j <= width - VTraits<v_uint8>::vlanes(); j += VTraits<v_uint8>::vlanes())
+        cv::v_uint8 v_zero = cv::vx_setzero_u8();
+        for (; j <= width - cv::VTraits<cv::v_uint8>::vlanes(); j += cv::VTraits<cv::v_uint8>::vlanes())
         {
-            v_uint8 vmask = (v_ne(vx_load((uchar*)(src_data + j)), v_zero));
+            cv::v_uint8 vmask = (cv::v_ne(cv::vx_load((uchar*)(src_data + j)), v_zero));
             if (v_check_any(vmask))
             {
-                j += v_scan_forward(vmask);
+                j += cv::v_scan_forward(vmask);
                 return j;
             }
         }
@@ -354,13 +337,13 @@ public:
         }
         else
         {
-            v_uint8 v_zero = vx_setzero_u8();
-            for (; j <=  width - VTraits<v_uint8>::vlanes(); j += VTraits<v_uint8>::vlanes())
+            cv::v_uint8 v_zero = cv::vx_setzero_u8();
+            for (; j <=  width - cv::VTraits<cv::v_uint8>::vlanes(); j += cv::VTraits<cv::v_uint8>::vlanes())
             {
-                v_uint8 vmask = (v_eq(vx_load((uchar*)(src_data + j)), v_zero));
-                if (v_check_any(vmask))
+                cv::v_uint8 vmask = (cv::v_eq(cv::vx_load((uchar*)(src_data + j)), v_zero));
+                if (cv::v_check_any(vmask))
                 {
-                    j += v_scan_forward(vmask);
+                    j += cv::v_scan_forward(vmask);
                     return j;
                 }
             }
@@ -370,37 +353,6 @@ public:
             ;
 
         return j;
-    }
-
-    /**
- * @brief Generates a 64-bit hash for a contour invariant to starting point.
- * * Logic:
- * 1. Symmetry Breaking: pt.x and pt.y are combined using a large prime multiplier.
- * 2. High Entropy: Each point is scrambled via SplitMix64 to ensure bit dispersion.
- * 3. Commutativity: Point hashes are summed (+) to ensure starting-point invariance.
- * 4. Structural Integrity: The total point count is mixed into the final hash
- * to prevent collisions between contours with different lengths but similar sums.
- */
-    static uint64_t __uHashContour(const std::vector<cv::Point>& contour) {
-        auto hash_mix = [](uint64_t x) -> uint64_t {
-            x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
-            x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
-            x = x ^ (x >> 31);
-            return x;
-        };
-
-        uint64_t combinedPointHash = 0;
-        for (const auto& pt : contour) {
-            // Map (x, y) to a unique 64-bit seed
-            uint64_t seed = (static_cast<uint64_t>(pt.x) * 0x1f1f1f1f1f1f1f1fULL) ^ static_cast<uint64_t>(pt.y);
-            combinedPointHash += hash_mix(seed);
-        }
-
-        // Mix the contour size with the accumulated point hash
-        // We mix the size first so it acts as a unique 'salt' for the final transform
-        uint64_t finalHash = hash_mix(combinedPointHash ^ hash_mix(contour.size()));
-
-        return finalHash;
     }
 
 private:
@@ -469,13 +421,11 @@ void __findTRUContoursImpl(cv::Mat& padded,
 
 }
 
+
 // ==========================================================
-// 2. The Overload for Standard Vector (FAST PATH)
+//  2. Public API: Handles OutputArray and dispatches to the core implementation
 // ==========================================================
-void  findTRUContours(InputArray _src,
-                     std::vector<std::vector<cv::Point>>& contours,
-                     int minsize,int nthreads,
-                     InputOutputArray _buffer )
+void  findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minsize,int nthreads )
 {
     CV_INSTRUMENT_REGION();
     Mat src = _src.getMat();
@@ -484,35 +434,25 @@ void  findTRUContours(InputArray _src,
 
     // Buffer handling
     cv::Mat padded;
-    if (_buffer.needed()) {
-        cv::copyMakeBorder(src, _buffer, 1, 1, 1, 1, cv::BORDER_CONSTANT, 0);
-        padded = _buffer.getMat();
+    cv::copyMakeBorder(src, padded, 1, 1, 1, 1, cv::BORDER_CONSTANT, 0);
 
-    } else {
-        cv::copyMakeBorder(src, padded, 1, 1, 1, 1, cv::BORDER_CONSTANT, 0);
+
+    // Fast path: caller passed std::vector<std::vector<cv::Point>> directly.
+    // Write into it without any intermediate copy.
+    if (_contours.kind() == _InputArray::STD_VECTOR_VECTOR) {
+        auto* vec = reinterpret_cast<std::vector<std::vector<cv::Point>>*>(_contours.getObj());
+        __findTRUContoursImpl(padded, *vec, minsize, nthreads);
     }
+    else{ // Slow path: generic OutputArray — build in a temp vector then copy.
+        std::vector<std::vector<cv::Point>> tempContours;
+        __findTRUContoursImpl(padded, tempContours, minsize, nthreads);
 
-    // Call Core Logic directly
-    __findTRUContoursImpl(padded, contours, minsize,nthreads);
-}
-
-// ==========================================================
-// 3. The Overload for Generic OutputArray (SLOW PATH / COMPATIBILITY)
-// ==========================================================
-void  findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minsize,int nthreads, InputOutputArray _buffer )
-{
-
-    std::vector<std::vector<cv::Point>> tempContours;
-
-    // Call the fast version using our temp vector
-    findTRUContours(_src, tempContours, minsize,nthreads, _buffer);
-
-    // Copy to OutputArray (The unavoidable copy if using generic API)
-    _contours.create((int)tempContours.size(), 1, 0, -1, true);
-    for (size_t i = 0; i < tempContours.size(); i++) {
-        _contours.create((int)tempContours[i].size(), 1, CV_32SC2, (int)i, true);
-        Mat m = _contours.getMat((int)i);
-        Mat(tempContours[i]).copyTo(m);
+        _contours.create((int)tempContours.size(), 1, 0, -1, true);
+        for (size_t i = 0; i < tempContours.size(); i++) {
+            _contours.create((int)tempContours[i].size(), 1, CV_32SC2, (int)i, true);
+            Mat m = _contours.getMat((int)i);
+            std::memcpy(m.data, tempContours[i].data(), tempContours[i].size() * sizeof(cv::Point));
+        }
     }
 }
 
