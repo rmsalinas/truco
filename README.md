@@ -36,7 +36,7 @@ Standard contour extraction algorithms (like Suzuki-Abe) are sequential and rely
 
 ## 📊 Performance
 
-TRUCO has been benchmarked against OpenCV's `findContours` (Suzuki-Abe) and Run-Length Encoding (RLE) methods.
+TRUCO has been benchmarked against OpenCV's `findContours` (Suzuki-Abe) and Run-Length Encoding (RLE) `findContoursLinkRuns` methods.
 
 ### Key Benchmarks
 * **Single-Threaded:** Even without parallelism, TRUCO is **~1.8x faster** than OpenCV due to 8-bit optimizations.
