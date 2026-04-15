@@ -2,9 +2,9 @@
 #include <opencv2/core.hpp>
 #include <opencv2/core/hal/intrin.hpp>
 #include <opencv2/imgproc.hpp>
-namespace cv{
-
-
+#include <map>
+#define CV_INSTRUMENT_REGION() // No-op for now, can be expanded to integrate with profiling tools
+namespace{
 // Tunable block size. 1024 points = 8KB (Fits easily in L1 Cache)
 template <size_t BLOCK_SIZE = 2048>
 class TRUCOPagedContour {
@@ -111,7 +111,7 @@ private:
     }
 
     void allocateBlock() {
-             Block* b = (Block*)cv::fastMalloc(sizeof(Block));
+        Block* b = (Block*)cv::fastMalloc(sizeof(Block));
         all_blocks_.push_back(b);
     }
 
@@ -123,25 +123,13 @@ private:
     cv::Point* end_ptr_  = nullptr;
 };
 
-/**
- * @brief Traces the contours of a binary image using the Moore-Neighbor Tracing algorithm.
- *
- * @param _src The input binary image (CV_8UC1).
- * @param _contours Output vector of contours.
- * @param minSize Minimum number of points for a contour to be retained.
- * @param nthreads Number of threads to use for parallel processing. If 0, the number of threads is determined automatically.
- * @param _buffer Optional working buffer (CV_8UC1) sized (src.rows+2 x src.cols+2). It may not be sized, so it will be done here.
- *                Pass a persistent Mat here to avoid memory allocation overhead in loops.
- */
-CV_EXPORTS_W  void findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minSize=0,int nthreads=0 );
-
-
 
 ////IMPLEMENTATION
 
-
-#define CV_INSTRUMENT_REGION()//remove when inserted in the OpenCV library
-
+struct AccumulatorT:public std::vector<std::vector<cv::Point>>{
+    std::map<uint64_t,size_t> Last_HashIndex_O;
+    std::map<uint64_t,size_t> First_HashIndex_I;
+};
 
 class TRUCOntourTracer : public cv::ParallelLoopBody
 {
@@ -149,7 +137,7 @@ public:
 
     // We use a pointer to the accumulator to avoid passing huge objects
     // Accumulator: Vector of (Vector of Contours), where Contour is Vector of Points
-    using AccumulatorType = std::vector<std::vector<std::vector<cv::Point>>>;
+    using AccumulatorType = std::vector<AccumulatorT>;
 
     TRUCOntourTracer(const cv::Mat& img,
                      const std::vector<cv::Range>& stripRanges,
@@ -176,7 +164,6 @@ public:
         // 7: SE (Down-Right)
         offsets_[7] = istep + 1;
 
-        memcpy(offsets_ + 8, offsets_, 8 * sizeof(int));
         memcpy(offsets_ + 8, offsets_, 8 * sizeof(int));
 
     }
@@ -281,10 +268,12 @@ public:
                                 buffer.pop_back();
                             }
                             if (buffer.size() >= minSize_) {
-                                // --- OPTIMIZATION: Move Semantics ---
                                 // Instead of copying the vector, we move it.
                                 local_contours.emplace_back();
                                 buffer.copyTo(local_contours.back());
+                                if(r==rowRange.end-1){
+                                    local_contours.Last_HashIndex_O[hashContour(local_contours.back())]=local_contours.size()-1;
+                                }
                             }
                         }
                     }
@@ -304,6 +293,9 @@ public:
                                 local_contours.emplace_back();
                                 buffer.copyTo(local_contours.back());
                             }
+                            if(r==rowRange.start){
+                                    local_contours.First_HashIndex_I[hashContour(local_contours.back())]=local_contours.size()-1;
+                            }
                         }
                     }
                 }
@@ -318,7 +310,7 @@ public:
         for (; j <= width - cv::VTraits<cv::v_uint8>::vlanes(); j += cv::VTraits<cv::v_uint8>::vlanes())
         {
             cv::v_uint8 vmask = (cv::v_ne(cv::vx_load((uchar*)(src_data + j)), v_zero));
-            if (v_check_any(vmask))
+            if (cv::v_check_any(vmask))
             {
                 j += cv::v_scan_forward(vmask);
                 return j;
@@ -357,6 +349,31 @@ public:
         return j;
     }
 
+    static inline uint64_t hashContour(const std::vector<cv::Point>& c) {
+        uint64_t h = 0;
+
+        for (const auto& pt : c) {
+            uint64_t seed = (static_cast<uint64_t>(pt.x) * UINT64_C(0x1f1f1f1f1f1f1f1f)) ^ static_cast<uint64_t>(pt.y);
+
+            //   hashMix for 'seed'
+            seed = (seed ^ (seed >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+            seed = (seed ^ (seed >> 27)) * UINT64_C(0x94d049bb133111eb);
+            h += seed ^ (seed >> 31);
+        }
+
+        //   hashMix for 'c.size()'
+        uint64_t size_hash = static_cast<uint64_t>(c.size());
+        size_hash = (size_hash ^ (size_hash >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        size_hash = (size_hash ^ (size_hash >> 27)) * UINT64_C(0x94d049bb133111eb);
+        size_hash = size_hash ^ (size_hash >> 31);
+
+        //   hashMix for the final combined hash
+        uint64_t final_hash = h ^ size_hash;
+        final_hash = (final_hash ^ (final_hash >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+        final_hash = (final_hash ^ (final_hash >> 27)) * UINT64_C(0x94d049bb133111eb);
+
+        return final_hash ^ (final_hash >> 31);
+    }
 private:
     cv::Mat padded_;
     const std::vector<cv::Range>& ranges_;
@@ -401,15 +418,29 @@ void __findTRUContoursImpl(cv::Mat& padded,
         balancedRanges.emplace_back(1, padded.rows - 1);
     }
     // 2. Parallel Execution
-    std::vector<std::vector<std::vector<cv::Point>>> threadAccumulators(balancedRanges.size());
+    std::vector<AccumulatorT> threadAccumulators(balancedRanges.size());
     TRUCOntourTracer worker(padded, balancedRanges, threadAccumulators, minSize);
     cv::parallel_for_(cv::Range(0, (int)balancedRanges.size()), worker, nthreads);
 
+    //remove possible duplicated that happens in very rare occasions
+    for(int i=0;i<int(threadAccumulators.size())-1;i++){
+        for(auto [k,v]:threadAccumulators[i].Last_HashIndex_O){
+            if(auto it=threadAccumulators[i+1].First_HashIndex_I.find(k);it!=threadAccumulators[i+1].First_HashIndex_I.end()){
+                size_t idx=it->second;
+                // Swap the target with the last element
+                std::swap( threadAccumulators[i+1][idx], threadAccumulators[i+1].back());
+                // Remove the last element
+                threadAccumulators[i+1].pop_back();
+            }
+        }
+    }
 
     // 3. ZERO-COPY MERGE
     // Calculate total size
+
     size_t totalContours = 0;
-    for (const auto& vec : threadAccumulators) totalContours += vec.size();
+    for (const auto& vec : threadAccumulators)
+        totalContours += vec.size();
 
     outContours.clear();
     outContours.reserve(totalContours);
@@ -420,14 +451,16 @@ void __findTRUContoursImpl(cv::Mat& padded,
                            std::make_move_iterator(tVec.begin()),
                            std::make_move_iterator(tVec.end()));
     }
-
+    std::reverse(outContours.begin(), outContours.end());
+}
 }
 
+namespace cv{
 
 // ==========================================================
 //  2. Public API: Handles OutputArray and dispatches to the core implementation
 // ==========================================================
-void  findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minsize,int nthreads )
+void findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minSize, int nthreads)
 {
     CV_INSTRUMENT_REGION();
     Mat src = _src.getMat();
@@ -443,11 +476,11 @@ void  findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minsiz
     // Write into it without any intermediate copy.
     if (_contours.kind() == _InputArray::STD_VECTOR_VECTOR) {
         auto* vec = reinterpret_cast<std::vector<std::vector<cv::Point>>*>(_contours.getObj());
-        __findTRUContoursImpl(padded, *vec, minsize, nthreads);
+        __findTRUContoursImpl(padded, *vec, minSize, nthreads);
     }
     else{ // Slow path: generic OutputArray — build in a temp vector then copy.
         std::vector<std::vector<cv::Point>> tempContours;
-        __findTRUContoursImpl(padded, tempContours, minsize, nthreads);
+        __findTRUContoursImpl(padded, tempContours, minSize, nthreads);
 
         _contours.create((int)tempContours.size(), 1, 0, -1, true);
         for (size_t i = 0; i < tempContours.size(); i++) {
