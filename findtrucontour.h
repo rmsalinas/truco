@@ -8,6 +8,47 @@
 #include <opencv2/highgui.hpp>
 #define CV_INSTRUMENT_REGION() // No-op for now, can be expanded to integrate with profiling tools
 
+void showImage(const cv::Mat &im,cv::Point cur,cv::Point p2){
+    //conver to 3 channels
+    cv::Mat im3;
+    cv::cvtColor(im,im3,cv::COLOR_GRAY2BGR);
+    //draw each staus with a different color
+     for(int r=0;r<im.rows;r++){
+        for(int c=0;c<im.cols;c++){
+            uchar v=im.at<uchar>(r,c);
+            if(v==100){//VISITED_OUTER_RIGHT
+                im3.at<cv::Vec3b>(r,c)=cv::Vec3b(0,0,255);//
+            }else if(v==200){//VISITED_
+                im3.at<cv::Vec3b>(r,c)=cv::Vec3b(0,255,0);//cyan
+            }
+        }
+    }
+    //draw current point in red
+//    im3.at<cv::Vec3b>(cur)=cv::Vec3b(255,0,0);
+
+    //resize by a factor of scale fs=10
+    int fs=20;
+    cv::resize(im3,im3,cv::Size(im3.cols*fs,im3.rows*fs),0,0,cv::INTER_NEAREST);
+    //draw a circle around the current point
+    cv::circle(im3,cv::Point(cur.x*fs+fs/2,cur.y*fs+fs/2),fs/2,cv::Scalar(255,0,0),1);
+    //draw a circle around the current point
+    cv::circle(im3,cv::Point(p2.x*fs+fs/2,p2.y*fs+fs/2),fs/2,cv::Scalar(255,0,255),1);
+
+    //if image too big, cut a rect around cur point
+    int w=400,h=400;
+    int x=std::max(0,cur.x*fs-w/2);
+    int y=std::max(0,cur.y*fs-h/2);
+    x=std::min(x,im3.cols-w);
+    y=std::min(y,im3.rows-h);
+    im3=im3(cv::Rect(x,y,w,h));
+
+
+
+    cv::imshow("im",im3);
+    //wait for key
+    cv::waitKey(0);
+}
+
 namespace{
 // Tunable block size. 1024 points = 8KB (Fits easily in L1 Cache)
 template <size_t BLOCK_SIZE = 2048>
@@ -366,33 +407,6 @@ private:
     const uchar VISITED_OUTER_RIGHT    = 100;
     const uchar VISITED_    = 200;
 };
-
-static bool isForwardCyclicShift(const std::vector<cv::Point>& A, const std::vector<cv::Point>& B) {
-    if (A.size() != B.size()) return false;
-    if (A.empty()) return true;
-
-    int n = static_cast<int>(A.size());
-
-    // Find all occurrences of A[0] in B (there can be multiple in 1-pixel shapes)
-    for (int b_start = 0; b_start < n; ++b_start) {
-        if (B[b_start] == A[0]) {
-            bool match = true;
-            for (int i = 0; i < n; ++i) {
-                // Traverse B FORWARD
-                int b_idx = (b_start + i) % n;
-
-                if (A[i] != B[b_idx]) {
-                    match = false;
-                    break;
-                }
-            }
-            // If we make it through the loop, we proved B is a forward shift of A!
-            if (match) return true;
-        }
-    }
-    return false;
-}
-
 
 // ==========================================================
 // 1. The Core Implementation (Operates on std::vector directly)
