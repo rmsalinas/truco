@@ -23,7 +23,19 @@ bool TEST_GARCIA=true;
 
 std::string baseComparison="01::findContours";
 bool calculateThreadLoadBalance=false;
-bool areDifferent( const std::vector<std::vector<cv::Point>> &cont1,const std::vector<std::vector<cv::Point>> &cont2);
+//helper to  change the number of threads
+struct CvNThreadScope{
+    int nprev;
+    CvNThreadScope(int n){
+        nprev=cv::getNumThreads();
+        cv::setNumThreads(n);
+    }
+    ~CvNThreadScope(){
+        cv::setNumThreads(nprev);
+    }
+};
+
+bool areEquivalent( const std::vector<std::vector<cv::Point>> &cont1,const std::vector<std::vector<cv::Point>> &cont2);
 class Timer{
     int64 tstart,tend,bestTime=std::numeric_limits<int64>::max();
 public:
@@ -272,8 +284,9 @@ void test_truco(cv::Mat &imthres,std::map<std::string,maxinit<double>> &bestTime
         Timer TheTimer;
         for(int i=0;i<testNTimes;i++){
             TRUContours.clear();
+            CvNThreadScope scope(nt);
             TheTimer.start();
-            cv::findTRUContours(imthres,TRUContours,GlobalcontourSizeThres,nt);
+            cv::findTRUContours(imthres,TRUContours,GlobalcontourSizeThres);
             TheTimer.end();
         }
         auto stn=std::to_string(nt);
@@ -284,7 +297,7 @@ void test_truco(cv::Mat &imthres,std::map<std::string,maxinit<double>> &bestTime
         if(TEST_TRUCO_DEV_SAME_AS_SUZUKI) {
             std::vector<std::vector<cv::Point>> contoursSuzuki;
             cv::findContours(imthres.clone(),contoursSuzuki,cv::RETR_LIST,cv::CHAIN_APPROX_NONE);
-            if(areDifferent(contoursSuzuki,TRUContours)){
+            if(!areEquivalent(contoursSuzuki,TRUContours)){
                 std::cout<<"⚠️ Differences found between Suzuki and findUContours with "<<nt<<" threads."<<std::endl;
                 //stop the program here
                 cv::imshow("ERROR",imthres);cv::waitKey(0);
@@ -396,11 +409,23 @@ void tests( cv::Mat &imthres,std::map<std::string,maxinit<double>> &bestTimes){
 }
 
 
+bool areEquivalent(const std::vector<std::vector<cv::Point> > &cont1, const std::vector<std::vector<cv::Point> > &cont2){
 
-bool areDifferent(const std::vector<std::vector<cv::Point> > &cont1, const std::vector<std::vector<cv::Point> > &cont2){
+    auto contoursMatch_strict=[](const std::vector<cv::Point>& cont1,const std::vector<cv::Point>& cont2)->bool{
+        if(cont1.size()!=cont2.size())
+            return false;
 
-    int ndiff=0;
-    auto __uHashContour=[](const std::vector<cv::Point>& contour) ->uint64_t{
+        for (size_t p = 0; p < cont1.size(); ++p) {
+            if (cont1[p]!= cont2[p]){
+                return false;
+            }
+        }
+        return true;
+
+    };
+
+    auto __uHashContour  =[](const std::vector<cv::Point>& contour)   ->uint64_t{
+
         auto hash_mix = [](uint64_t x) -> uint64_t {
             x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
             x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
@@ -408,40 +433,77 @@ bool areDifferent(const std::vector<std::vector<cv::Point> > &cont1, const std::
             return x;
         };
 
-        uint64_t combinedPointHash = 0;
-        for (const auto& pt : contour) {
-            // Map (x, y) to a unique 64-bit seed
-            uint64_t seed = (static_cast<uint64_t>(pt.x) * 0x1f1f1f1f1f1f1f1fULL) ^ static_cast<uint64_t>(pt.y);
-            combinedPointHash += hash_mix(seed);
+        const size_t n = contour.size();
+        if (n == 0) return hash_mix(0);
+
+        // -- Step 1: find the lexicographically smallest cyclic rotation --------
+        // O(n^2) worst case, but effectively O(n) in practice because the minimum
+        // contour point is almost always unique. For degenerate cases with many
+        // ties (all points equal, etc.) this still terminates correctly.
+        auto less_pt = [](const cv::Point& a, const cv::Point& b) {
+            return a.x < b.x || (a.x == b.x && a.y < b.y);
+        };
+        size_t start = 0;
+        for (size_t cand = 1; cand < n; ++cand) {
+            for (size_t k = 0; k < n; ++k) {
+                const cv::Point& a = contour[(start + k) % n];
+                const cv::Point& b = contour[(cand  + k) % n];
+                if (a == b) continue;
+                if (less_pt(b, a)) start = cand;
+                break;
+            }
         }
 
-        // Mix the contour size with the accumulated point hash
-        // We mix the size first so it acts as a unique 'salt' for the final transform
-        uint64_t finalHash = hash_mix(combinedPointHash ^ hash_mix(contour.size()));
-
-        return finalHash;
+        // -- Step 2: fold the points starting at `start` through an --------------
+        // -- order-SENSITIVE combiner (so [A,B,C] and [A,C,B] differ). ----------
+        // The cyclic rotation invariance comes only from the canonical start
+        // index chosen above; the combiner itself is fully order-sensitive.
+        uint64_t h = hash_mix(static_cast<uint64_t>(n));
+        for (size_t i = 0; i < n; ++i) {
+            const cv::Point& pt = contour[(start + i) % n];
+            // Pack (x,y) losslessly into 64 bits; cast through uint32_t so that
+            // any negative coordinate doesn't sign-extend and clobber the x half.
+            uint64_t packed = (static_cast<uint64_t>(static_cast<uint32_t>(pt.x)) << 32)
+                              |  static_cast<uint64_t>(static_cast<uint32_t>(pt.y));
+            h = hash_mix(h ^ hash_mix(packed));
+        }
+        return h;
     };
 
+    struct cinfo
+    {
+        int ntimes=0;
+        std::vector<cv::Point> contour;
+    };
+    std::map<uint64,cinfo> hashes1,hashes2;;
+    for(auto &contour:cont1){
+        auto hash=__uHashContour(contour);
+        hashes1[hash].contour= contour;
+        hashes1[hash].ntimes++;
 
-    std::map<uint64,std::vector<cv::Point>> hashes1,hashes2;;
-    for(auto &contour:cont1)
-        hashes1[__uHashContour(contour)]=contour;
-    for(auto &contour:cont2)
-        hashes2[__uHashContour(contour)]=contour;
+    }
+    for(auto &contour:cont2){
+        auto hash=__uHashContour(contour);
+        hashes2[hash].contour= contour;
+        hashes2[hash].ntimes++;
+    }
 
-
-    //find the contours that are not in both
-    for(auto &pair:hashes1){//element in cont and not in cont2
-        if(hashes2.find(pair.first)==hashes2.end()){
-            return true;
+    //compare the maps, they should contain the same keys with the same number of times
+    if(hashes1.size()!=hashes2.size()){
+//        std::cout<<"Different number of unique contours: "<<hashes1.size()<<" vs "<<hashes2.size()<<std::endl;
+        return false;
+    }
+    for(auto it1=hashes1.begin(),it2=hashes2.begin();it1!=hashes1.end() && it2!=hashes2.end();it1++,it2++){
+        if(it1->first!=it2->first){
+//            std::cout<<"Different contour hash: "<<it1->first<<" vs "<<it2->first<<std::endl;
+            return false;
+        }
+        if(it1->second.ntimes!=it2->second.ntimes){
+  //          std::cout<<"Different number of times for contour hash "<<it1->first<<": "<<it1->second.ntimes<<" vs "<<it2->second.ntimes<<std::endl;
+            return false;
         }
     }
-    for(auto &pair:hashes2){//element in cont2 and not in cont
-        if(hashes1.find(pair.first)==hashes1.end()){
-            return true;
-        }
-    }
-    return false;
+    return true;
 }
 
 std::optional< std::pair<int,cv::Mat> > contourDiffImage(cv::Mat &inThres,  std::vector<std::vector<cv::Point>> &cont1,std::vector<std::vector<cv::Point>> &cont2){
