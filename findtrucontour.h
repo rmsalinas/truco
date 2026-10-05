@@ -2,54 +2,9 @@
 #include <opencv2/core.hpp>
 #include <opencv2/core/hal/intrin.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/imgproc.hpp>
-#include <map>
-#include <iostream>
-#include <opencv2/highgui.hpp>
-#define CV_INSTRUMENT_REGION() // No-op for now, can be expanded to integrate with profiling tools
-
-void showImage(const cv::Mat &im,cv::Point cur,cv::Point p2){
-    //conver to 3 channels
-    cv::Mat im3;
-    cv::cvtColor(im,im3,cv::COLOR_GRAY2BGR);
-    //draw each staus with a different color
-     for(int r=0;r<im.rows;r++){
-        for(int c=0;c<im.cols;c++){
-            uchar v=im.at<uchar>(r,c);
-            if(v==100){//VISITED_OUTER_RIGHT
-                im3.at<cv::Vec3b>(r,c)=cv::Vec3b(0,0,255);//
-            }else if(v==200){//VISITED_
-                im3.at<cv::Vec3b>(r,c)=cv::Vec3b(0,255,0);//cyan
-            }
-        }
-    }
-    //draw current point in red
-//    im3.at<cv::Vec3b>(cur)=cv::Vec3b(255,0,0);
-
-    //resize by a factor of scale fs=10
-    int fs=20;
-    cv::resize(im3,im3,cv::Size(im3.cols*fs,im3.rows*fs),0,0,cv::INTER_NEAREST);
-    //draw a circle around the current point
-    cv::circle(im3,cv::Point(cur.x*fs+fs/2,cur.y*fs+fs/2),fs/2,cv::Scalar(255,0,0),1);
-    //draw a circle around the current point
-    cv::circle(im3,cv::Point(p2.x*fs+fs/2,p2.y*fs+fs/2),fs/2,cv::Scalar(255,0,255),1);
-
-    //if image too big, cut a rect around cur point
-    int w=400,h=400;
-    int x=std::max(0,cur.x*fs-w/2);
-    int y=std::max(0,cur.y*fs-h/2);
-    x=std::min(x,im3.cols-w);
-    y=std::min(y,im3.rows-h);
-    im3=im3(cv::Rect(x,y,w,h));
+namespace cv{
 
 
-
-    cv::imshow("im",im3);
-    //wait for key
-    cv::waitKey(0);
-}
-
-namespace{
 // Tunable block size. 1024 points = 8KB (Fits easily in L1 Cache)
 template <size_t BLOCK_SIZE = 2048>
 class TRUCOPagedContour {
@@ -156,7 +111,7 @@ private:
     }
 
     void allocateBlock() {
-        Block* b = (Block*)cv::fastMalloc(sizeof(Block));
+             Block* b = (Block*)cv::fastMalloc(sizeof(Block));
         all_blocks_.push_back(b);
     }
 
@@ -168,10 +123,25 @@ private:
     cv::Point* end_ptr_  = nullptr;
 };
 
+/**
+ * @brief Traces the contours of a binary image using the Moore-Neighbor Tracing algorithm.
+ *
+ * @param _src The input binary image (CV_8UC1).
+ * @param _contours Output vector of contours.
+ * @param minSize Minimum number of points for a contour to be retained.
+ * @param nthreads Number of threads to use for parallel processing. If 0, the number of threads is determined automatically.
+ * @param _buffer Optional working buffer (CV_8UC1) sized (src.rows+2 x src.cols+2). It may not be sized, so it will be done here.
+ *                Pass a persistent Mat here to avoid memory allocation overhead in loops.
+ */
+CV_EXPORTS_W  void findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minSize=0,int nthreads=0 );
+
+
 
 ////IMPLEMENTATION
-//define AccumulatorT
-using AccumulatorT=std::vector<std::vector<cv::Point>>;
+
+
+#define CV_INSTRUMENT_REGION()//remove when inserted in the OpenCV library
+
 
 class TRUCOntourTracer : public cv::ParallelLoopBody
 {
@@ -179,7 +149,7 @@ public:
 
     // We use a pointer to the accumulator to avoid passing huge objects
     // Accumulator: Vector of (Vector of Contours), where Contour is Vector of Points
-    using AccumulatorType = std::vector<AccumulatorT>;
+    using AccumulatorType = std::vector<std::vector<std::vector<cv::Point>>>;
 
     TRUCOntourTracer(const cv::Mat& img,
                      const std::vector<cv::Range>& stripRanges,
@@ -207,11 +177,11 @@ public:
         offsets_[7] = istep + 1;
 
         memcpy(offsets_ + 8, offsets_, 8 * sizeof(int));
+        memcpy(offsets_ + 8, offsets_, 8 * sizeof(int));
 
     }
 
     bool traceContour( TRUCOPagedContour<4096>* buffer,  int r,int c,uchar *row_ptr, const cv::Range& rowRange,bool isExternal)const{
-
         buffer->clear();
 
         int curr_x = c , curr_y = r;
@@ -236,10 +206,8 @@ public:
                 // --- EXECUTE MOVE ---
                 curr_y += dy_[dir];
                 curr_x += dx_[dir];
-
-
                 // Check bounds //we need to move out of the range  //if first line, and internal contour, we let it go, but no further from this line
-                if( curr_y < rowRange.start ){
+                if( curr_y < rowRange.start  &&  !(!isExternal && r==rowRange.start && curr_y== rowRange.start -1)){
                     return false;
                 }
                 if ((search_idx <= 1)  || (dir <= search_idx - 2))
@@ -277,7 +245,6 @@ public:
         }
         return true;
     }
-
     void operator()(const cv::Range& range) const CV_OVERRIDE
     {
 
@@ -295,7 +262,7 @@ public:
             // Hint for result vector size
             local_contours.reserve(2048);
 
-            for (int r = rowRange.start; r <= rowRange.end; ++r)
+            for (int r = rowRange.start; r < rowRange.end; ++r)
             {
                 uchar* row_ptr = padded_.data + r * step_;
 
@@ -306,7 +273,7 @@ public:
                     if ((c = findStartContourPoint(row_ptr, cols, c)) == cols) break;
 
                     // 2. CHECK: Only process if actually FOREGROUND (redundancy check)
-                    if (row_ptr[c] == FOREGROUND && r<rowRange.end )
+                    if (row_ptr[c] == FOREGROUND)
                     {
                         if( traceContour(&buffer,r,c,row_ptr,rowRange,true)){
                             // Post-processing
@@ -314,6 +281,7 @@ public:
                                 buffer.pop_back();
                             }
                             if (buffer.size() >= minSize_) {
+                                // --- OPTIMIZATION: Move Semantics ---
                                 // Instead of copying the vector, we move it.
                                 local_contours.emplace_back();
                                 buffer.copyTo(local_contours.back());
@@ -325,12 +293,12 @@ public:
                     c = findEndContourPoint(row_ptr, cols, c + 1);
                     if(c>=cols)break;//end of row
                     //internal contour
-                    if(row_ptr[c-1]>VISITED_OUTER_RIGHT & r>rowRange.start){//inner contours of first line are handled by the thread above
-
-                        if(traceContour(&buffer,r,c-1,row_ptr,rowRange,false)){
+                    if(row_ptr[c-1]>VISITED_OUTER_RIGHT){
+                        if( traceContour(&buffer,r,c-1,row_ptr,rowRange,false)){
                             // Post-processing
                             if (buffer.size() > 1 && buffer.back() == buffer.front()) {
                                 buffer.pop_back();
+
                             }
                             if (buffer.size() >= minSize_) {
                                 local_contours.emplace_back();
@@ -350,7 +318,7 @@ public:
         for (; j <= width - cv::VTraits<cv::v_uint8>::vlanes(); j += cv::VTraits<cv::v_uint8>::vlanes())
         {
             cv::v_uint8 vmask = (cv::v_ne(cv::vx_load((uchar*)(src_data + j)), v_zero));
-            if (cv::v_check_any(vmask))
+            if (v_check_any(vmask))
             {
                 j += cv::v_scan_forward(vmask);
                 return j;
@@ -389,7 +357,6 @@ public:
         return j;
     }
 
-
 private:
     cv::Mat padded_;
     const std::vector<cv::Range>& ranges_;
@@ -408,23 +375,24 @@ private:
     const uchar VISITED_    = 200;
 };
 
+
+
 // ==========================================================
 // 1. The Core Implementation (Operates on std::vector directly)
 // ==========================================================
 void __findTRUContoursImpl(cv::Mat& padded,
                            std::vector<std::vector<cv::Point>>& outContours,
-                           int minSize)
+                           int minSize,int nthreads)
 {
-    //  Load Balancing Logic
-    const int nstripes = cv::getNumThreads();
+    // 1. Load Balancing Logic
     std::vector<cv::Range> balancedRanges;
-    if (nstripes > 1) {
-        int rowsPerStripe = (padded.rows - 2) / nstripes;
-        int remainingRows = (padded.rows - 2) % nstripes;
+    if (nthreads > 1 ) {
+        int rowsPerThread = (padded.rows - 2) / nthreads;
+        int remainingRows = (padded.rows - 2) % nthreads;
         int currentRow = 1;
-        for (int t = 0; t < nstripes; ++t) {
+        for (int t = 0; t < nthreads; ++t) {
             int startRow = currentRow;
-            int endRow = startRow + rowsPerStripe + (t < remainingRows ? 1 : 0);
+            int endRow = startRow + rowsPerThread + (t < remainingRows ? 1 : 0);
             balancedRanges.emplace_back(startRow, endRow);
             currentRow = endRow;
         }
@@ -432,63 +400,54 @@ void __findTRUContoursImpl(cv::Mat& padded,
     else {
         balancedRanges.emplace_back(1, padded.rows - 1);
     }
-    //   Parallel Execution
-    std::vector<AccumulatorT> threadAccumulators(balancedRanges.size());
+    // 2. Parallel Execution
+    std::vector<std::vector<std::vector<cv::Point>>> threadAccumulators(balancedRanges.size());
     TRUCOntourTracer worker(padded, balancedRanges, threadAccumulators, minSize);
-    cv::parallel_for_(cv::Range(0, (int)balancedRanges.size()), worker);
-    //   ZERO-COPY MERGE
+    cv::parallel_for_(cv::Range(0, (int)balancedRanges.size()), worker, nthreads);
+
+
+    // 3. ZERO-COPY MERGE
+    // Calculate total size
     size_t totalContours = 0;
-    for (auto& tVec : threadAccumulators) {
-        if (!tVec.empty()) {
-            tVec.erase(std::remove_if(tVec.begin(), tVec.end(),
-                                      [](const std::vector<cv::Point>& c){ return c.empty(); }), tVec.end());
-        }
-        totalContours += tVec.size();
-    }
+    for (const auto& vec : threadAccumulators) totalContours += vec.size();
 
     outContours.clear();
     outContours.reserve(totalContours);
-    // move the contours from thread accumulators to output without copying pixel data
+
     for (auto& tVec : threadAccumulators) {
         // move_iterator moves the vector internals (pointers) without copying pixel data
         outContours.insert(outContours.end(),
                            std::make_move_iterator(tVec.begin()),
                            std::make_move_iterator(tVec.end()));
     }
-    //6. reverse the order to match original findContours Suzuki&Abe
-   // std::reverse(outContours.begin(), outContours.end());
-
 
 }
-}
 
-namespace cv{
 
 // ==========================================================
 //  2. Public API: Handles OutputArray and dispatches to the core implementation
 // ==========================================================
-void findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minSize=0, bool binarize=false )
+void  findTRUContours(InputArray _src, OutputArrayOfArrays _contours, int minsize,int nthreads )
 {
     CV_INSTRUMENT_REGION();
     Mat src = _src.getMat();
     CV_Assert(!src.empty() && src.type() == CV_8UC1);
+    if (nthreads <= 0) nthreads = cv::getNumThreads();
 
     // Buffer handling
     cv::Mat padded;
     cv::copyMakeBorder(src, padded, 1, 1, 1, 1, cv::BORDER_CONSTANT, 0);
-    if (binarize)
-        cv::threshold(padded, padded, 0, 255, cv::THRESH_BINARY);
 
 
     // Fast path: caller passed std::vector<std::vector<cv::Point>> directly.
     // Write into it without any intermediate copy.
     if (_contours.kind() == _InputArray::STD_VECTOR_VECTOR) {
         auto* vec = reinterpret_cast<std::vector<std::vector<cv::Point>>*>(_contours.getObj());
-        __findTRUContoursImpl(padded, *vec, minSize);
+        __findTRUContoursImpl(padded, *vec, minsize, nthreads);
     }
     else{ // Slow path: generic OutputArray — build in a temp vector then copy.
         std::vector<std::vector<cv::Point>> tempContours;
-        __findTRUContoursImpl(padded, tempContours, minSize);
+        __findTRUContoursImpl(padded, tempContours, minsize, nthreads);
 
         _contours.create((int)tempContours.size(), 1, 0, -1, true);
         for (size_t i = 0; i < tempContours.size(); i++) {
