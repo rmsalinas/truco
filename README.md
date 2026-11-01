@@ -72,6 +72,30 @@ int main() {
 Optional arguments: `mode` (`RETR_LIST`, `RETR_CCOMP`, `RETR_TREE`), `minSize` (contours with fewer points are
 not returned) and `binarize` (treat any non-zero pixel as foreground; otherwise the image must be 0 / 255).
 
+## Code used in the paper
+
+Two additional headers contain the code compared with TRUCO in the experiments of the paper. They are not
+needed to use TRUCO.
+
+* `suzukiabe.h`: the sequential Suzuki–Abe algorithm with hierarchy, as in the original paper, used as the
+  reference method. It returns the same output as `cv::findContours` with `RETR_TREE` and `CHAIN_APPROX_NONE`.
+
+  ```cpp
+  sa::findContoursSuzukiAbe(img, contours, hierarchy);   // with hierarchy (layout of RETR_TREE)
+  sa::findContoursSuzukiAbe(img, contours);              // without hierarchy, contours in scan order
+  ```
+
+* `findtrucontour_ablation.h`: the single-thread variants of TRUCO without hierarchy used in the ablation,
+  which differ only in the element type of the label image and in the scan.
+
+  ```cpp
+  cv::findTRUContoursAblation<uchar, true >(img, contours);   // 8-bit, vector scan (= cv::findTRUContours)
+  cv::findTRUContoursAblation<uchar, false>(img, contours);   // 8-bit, scalar scan
+  cv::findTRUContoursAblation<int,   false>(img, contours);   // 32-bit, scalar scan
+  ```
+
+The experiments of the paper use OpenCV 4.13.0.
+
 ## Citation
 
 ```bibtex
