@@ -39,7 +39,9 @@ At the largest resolution of each dataset:
 * **Without the hierarchy**, it is **2.3 to 17.8 times faster** than the fastest of OpenCV `RETR_LIST` and the
   run-based `cv::findContoursLinkRuns`.
 * **With a single thread**, TRUCO already computes the full hierarchy 1.2 to 7.7 times faster than Suzuki–Abe.
-* On inputs designed to defeat the stripe decomposition, its time does not grow with the number of threads.
+* On two images designed to maximize the redundant work of the stripe decomposition, TRUCO obtains no parallel
+  gain, but its time does not increase systematically with the number of threads, and with the hierarchy it is at
+  most 1.09 times slower than Suzuki–Abe.
 
 | Speedup vs. threads (synthetic and Liu4K) | Inria masks, 25 MP |
 | :---: | :---: |
